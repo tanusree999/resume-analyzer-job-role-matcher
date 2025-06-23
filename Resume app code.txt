@@ -1,0 +1,129 @@
+import streamlit as st
+import pickle
+import docx
+import PyPDF2
+import re
+import pandas as pd
+
+# Load pre-trained model and objects
+svc_model = pickle.load(open('clf.pkl', 'rb'))
+tfidf = pickle.load(open('tfidf.pkl', 'rb'))
+le = pickle.load(open('encoder.pkl', 'rb'))
+
+# Company and job role mapping
+company_mapping = {
+    "Data Science": ("TCS", "Junior Data Scientist"),
+    "HR": ("Infosys", "HR Executive"),
+    "Advocate": ("LexDoIt Law Firm", "Legal Associate"),
+    "Arts": ("Rabindra Bharati University", "Graphic Illustrator"),
+    "Web Designing": ("Capital Numbers", "Frontend Developer"),
+    "Mechanical Engineer": ("TIL Limited", "Mechanical Design Engineer"),
+    "Sales": ("Godrej Interio", "Sales Executive"),
+    "Health and fitness": ("Gold’s Gym Kolkata", "Fitness Trainer"),
+    "Civil Engineer": ("Simplex Infrastructures", "Site Engineer"),
+    "Java Developer": ("Cognizant", "Java Backend Developer"),
+    "Business Analyst": ("PwC India", "Business Analyst"),
+    "SAP Developer": ("Capgemini", "SAP FICO Consultant"),
+    "Automation Testing": ("Wipro", "QA Automation Engineer"),
+    "Electrical Engineering": ("L&T Switchgear", "Electrical Design Engineer"),
+    "Operations Manager": ("Aditya Birla Group", "Operations Lead"),
+    "Python Developer": ("IBM", "Python Developer"),
+    "DevOps Engineer": ("LTIMindtree", "DevOps Engineer"),
+    "Network Security Engineer": ("Paladion Networks", "Cybersecurity Analyst"),
+    "PMO": ("Deloitte", "PMO Coordinator"),
+    "Database": ("Oracle India", "Database Administrator"),
+    "Hadoop": ("TCS", "Big Data Engineer"),
+    "ETL Developer": ("Cognizant", "ETL Tester"),
+    "DotNet Developer": ("Infosys", ".NET Developer"),
+    "Blockchain": ("Tech Mahindra", "Blockchain Developer"),
+    "Testing": ("Accenture", "Software Tester")
+}
+
+# Resume cleaning function
+def clean_resume(text):
+    text = re.sub(r'http\S+', '', text)
+    text = re.sub(r'RT[\s]+', '', text)
+    text = re.sub(r'#\S+', '', text)
+    text = re.sub(r'@\S+', '', text)
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.lower()
+
+# Extract text from PDF
+def extract_text_from_pdf(file):
+    pdf_reader = PyPDF2.PdfReader(file)
+    text = ''
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
+
+# Extract text from DOCX
+def extract_text_from_docx(file):
+    doc = docx.Document(file)
+    text = ''
+    for paragraph in doc.paragraphs:
+        text += paragraph.text + '\n'
+    return text
+
+# Extract text from TXT
+def extract_text_from_txt(file):
+    try:
+        text = file.read().decode('utf-8')
+    except UnicodeDecodeError:
+        text = file.read().decode('latin-1')
+    return text
+
+# Handle upload and return text
+def handle_file_upload(uploaded_file):
+    extension = uploaded_file.name.split('.')[-1].lower()
+    if extension == 'pdf':
+        return extract_text_from_pdf(uploaded_file)
+    elif extension == 'docx':
+        return extract_text_from_docx(uploaded_file)
+    elif extension == 'txt':
+        return extract_text_from_txt(uploaded_file)
+    else:
+        raise ValueError("Unsupported file type.")
+
+# Prediction function
+def pred(input_resume):
+    cleaned = clean_resume(input_resume)
+    vectorized = tfidf.transform([cleaned]).toarray()
+    predicted_category = svc_model.predict(vectorized)
+    return le.inverse_transform(predicted_category)[0]
+
+# Streamlit UI
+def main():
+    st.set_page_config(page_title="Resume Category & Company Matcher", page_icon="📄", layout="centered")
+    st.title("Resume Category Prediction and Company Matcher")
+    st.markdown("Upload a resume in **PDF**, **DOCX**, or **TXT** format. Get the predicted **category**, and a **matching company and role** in Kolkata.")
+
+    uploaded_file = st.file_uploader("Upload a Resume", type=["pdf", "docx", "txt"])
+
+    if uploaded_file is not None:
+        try:
+            resume_text = handle_file_upload(uploaded_file)
+            st.success("✅ Resume text extracted successfully.")
+
+            if st.checkbox("Show extracted resume text"):
+                st.text_area("Extracted Text", resume_text, height=300)
+
+            # Prediction
+            st.subheader("Predicted Category")
+            category = pred(resume_text)
+            st.write(f"🔍 **Predicted Category:** `{category}`")
+
+            # Company mapping
+            if category in company_mapping:
+                company, role = company_mapping[category]
+                st.subheader("Recommended Company & Role")
+                st.write(f"🏢 **Company:** `{company}`")
+                st.write(f"💼 **Job Role:** `{role}`")
+            else:
+                st.warning("No company mapping found for this category.")
+
+        except Exception as e:
+            st.error(f"❌ Error processing file: {str(e)}")
+
+if __name__ == "__main__":
+    main()
