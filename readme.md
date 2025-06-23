@@ -19,3 +19,4 @@ I worked on data preprocessing, model building, train-test splitting, and creati
 - Resume parsing  
 - Streamlit app development  
 - Team collaboration
+
